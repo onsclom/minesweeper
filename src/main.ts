@@ -32,6 +32,7 @@ const CELL_SIZE = 32;
 // generate bombs
 const bombs = new Set<number>();
 const revealed = new Set<number>();
+const flags = new Set<number>();
 let a = 4;
 while (bombs.size < MINES)
   bombs.add(Math.floor(Math.random() * WIDTH * HEIGHT));
@@ -103,18 +104,27 @@ requestAnimationFrame(function tick() {
           CELL_SIZE - CELL_BORDER * 2
         );
       }
+      if (flags.has(y * WIDTH + x)) {
+        ctx.fillText(
+          EMOJI_FLAG,
+          x * CELL_SIZE + CELL_SIZE / 2,
+          y * CELL_SIZE + CELL_SIZE / 2
+        );
+      }
     }
   }
   ctx.restore();
-
   requestAnimationFrame(tick);
 });
 
 function bombCount(x: number, y: number) {
   let count = 0;
   for (let y2 = y - 1; y2 <= y + 1; y2++)
-    for (let x2 = x - 1; x2 <= x + 1; x2++)
+    for (let x2 = x - 1; x2 <= x + 1; x2++) {
+      const inBounds = x2 >= 0 && x2 < WIDTH && y2 >= 0 && y2 < HEIGHT;
+      if (!inBounds) continue;
       if (bombs.has(y2 * WIDTH + x2)) count++;
+    }
   return count;
 }
 
@@ -161,6 +171,18 @@ function screenPosToGridPos(x: number, y: number) {
   return pos;
 }
 
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  const gridPos = screenPosToGridPos(event.clientX, event.clientY);
+  if (!gridPos) return;
+  const { x, y } = gridPos;
+  const cell = y * WIDTH + x;
+  if (!revealed.has(cell)) {
+    if (flags.has(cell)) flags.delete(cell);
+    else flags.add(cell);
+  }
+});
+
 document.body.onclick = (e) => {
   const gridPos = screenPosToGridPos(e.clientX, e.clientY);
   if (!gridPos) return;
@@ -182,3 +204,4 @@ document.body.onpointermove = (e) => {
   if (!revealed.has(y * WIDTH + x)) canvas.style.cursor = "pointer";
   else canvas.style.cursor = "default";
 };
+console.log(bombs);
