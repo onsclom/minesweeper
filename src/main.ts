@@ -29,13 +29,12 @@ const CELL_SIZE = 32;
 // };
 
 /* GAME STATE */
-// generate bombs
 const bombs = new Set<number>();
-const revealed = new Set<number>();
-const flags = new Set<number>();
-let a = 4;
 while (bombs.size < MINES)
   bombs.add(Math.floor(Math.random() * WIDTH * HEIGHT));
+const revealed = new Set<number>();
+const flags = new Set<number>();
+let gameState = "alive" as "alive" | "dead" | "won";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -45,15 +44,10 @@ requestAnimationFrame(function tick() {
   const canvasRect = canvas.getBoundingClientRect();
 
   /* SETUP */
-
   // handle high dpi
-  // const newWidth = canvasRect.width * devicePixelRatio;
-  // const newHeight = canvasRect.height * devicePixelRatio;
-  // if (canvas.width !== newWidth || canvas.height !== newHeight) {
   canvas.width = canvasRect.width * devicePixelRatio;
   canvas.height = canvasRect.height * devicePixelRatio;
   ctx.scale(devicePixelRatio, devicePixelRatio);
-  // }
 
   // computed state
   // const won = revealed.size === WIDTH * HEIGHT - MINES;
@@ -114,6 +108,15 @@ requestAnimationFrame(function tick() {
     }
   }
   ctx.restore();
+
+  // top center draw state
+  const emoji = {
+    alive: "😀",
+    dead: "💀",
+    won: "🎉",
+  }[gameState];
+  ctx.fillText(emoji, canvasRect.width / 2, 20);
+
   requestAnimationFrame(tick);
 });
 
@@ -172,6 +175,10 @@ function screenPosToGridPos(x: number, y: number) {
 }
 
 document.addEventListener("contextmenu", (event) => {
+  if (gameState !== "alive") {
+    event.preventDefault();
+    return;
+  }
   event.preventDefault();
   const gridPos = screenPosToGridPos(event.clientX, event.clientY);
   if (!gridPos) return;
@@ -184,17 +191,32 @@ document.addEventListener("contextmenu", (event) => {
 });
 
 document.body.onclick = (e) => {
+  if (gameState !== "alive") {
+    // reset game!
+    return;
+  }
   const gridPos = screenPosToGridPos(e.clientX, e.clientY);
   if (!gridPos) return;
   const { x, y } = gridPos;
   const cell = y * WIDTH + x;
   revealed.add(cell);
+  if (bombs.has(cell)) {
+    gameState = "dead";
+    bombs.forEach((bomb) => revealed.add(bomb));
+    return;
+  }
   const bombsOnPos = bombCount(x, y);
   if (bombsOnPos === 0) floodFill(x, y);
+  const won = revealed.size === WIDTH * HEIGHT - MINES;
+  if (won) gameState = "won";
   canvas.style.cursor = "default";
 };
 
 document.body.onpointermove = (e) => {
+  if (gameState !== "alive") {
+    canvas.style.cursor = "default";
+    return;
+  }
   const gridPos = screenPosToGridPos(e.clientX, e.clientY);
   if (!gridPos) {
     canvas.style.cursor = "default";
@@ -204,4 +226,3 @@ document.body.onpointermove = (e) => {
   if (!revealed.has(y * WIDTH + x)) canvas.style.cursor = "pointer";
   else canvas.style.cursor = "default";
 };
-console.log(bombs);
