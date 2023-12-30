@@ -1,126 +1,94 @@
-// USE URL PARAMS FOR SIZE AND MINECOUNT ?!
-
 /* CONSTANTS */
 const WIDTH = 9;
 const HEIGHT = 9;
 const MINES = 10;
-const EMOJI_BOMB = `💣`;
-const EMOJI_FLAG = `🚩`;
-
 const CELL_BORDER = 1;
 const CELL_SIZE = 32;
 
-// const DIFFICULTIES = {
-//   beginner: {
-//     width: 9,
-//     height: 9,
-//     mines: 10,
-//   },
-//   intermediate: {
-//     width: 16,
-//     height: 16,
-//     mines: 40,
-//   },
-//   expert: {
-//     width: 30,
-//     height: 16,
-//     mines: 99,
-//   },
-// };
-
 /* GAME STATE */
+const revealed = new Set<number>();
+const flags = new Set<number>();
 const bombs = new Set<number>();
 while (bombs.size < MINES)
   bombs.add(Math.floor(Math.random() * WIDTH * HEIGHT));
-const revealed = new Set<number>();
-const flags = new Set<number>();
-let gameState = "alive" as "alive" | "dead" | "won";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d");
-if (!ctx) throw new Error("Canvas context not found");
-
+const ctx = canvas.getContext("2d")!;
 requestAnimationFrame(function tick() {
-  const canvasRect = canvas.getBoundingClientRect();
-
-  /* SETUP */
-  // handle high dpi
+  const canvasRect = canvas.getBoundingClientRect(); // changes on resize
   canvas.width = canvasRect.width * devicePixelRatio;
   canvas.height = canvasRect.height * devicePixelRatio;
   ctx.scale(devicePixelRatio, devicePixelRatio);
 
-  // computed state
-  // const won = revealed.size === WIDTH * HEIGHT - MINES;
-
-  /* DRAW */
+  /* RENDER */
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvasRect.width, canvasRect.height);
+
   ctx.font = "20px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-
   const grid = centeredGrid();
+  const [cb, cs] = [CELL_BORDER, CELL_SIZE];
   ctx.save();
   ctx.translate(grid.left, grid.top);
-  // draw grid
-  for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) {
-      ctx.fillStyle = "#ddd";
-      ctx.fillRect(
-        x * CELL_SIZE + CELL_BORDER,
-        y * CELL_SIZE + CELL_BORDER,
-        CELL_SIZE - CELL_BORDER * 2,
-        CELL_SIZE - CELL_BORDER * 2
-      );
-      if (bombs.has(y * WIDTH + x))
-        ctx.fillText(
-          EMOJI_BOMB,
-          x * CELL_SIZE + CELL_SIZE / 2,
-          y * CELL_SIZE + CELL_SIZE / 2
-        );
-      else {
-        const neighborCount = bombCount(x, y);
-        if (neighborCount > 0) {
-          ctx.fillStyle = "black";
-          ctx.fillText(
-            neighborCount.toString(),
-            x * CELL_SIZE + CELL_SIZE / 2,
-            y * CELL_SIZE + CELL_SIZE / 2
-          );
-        }
-      }
-      if (!revealed.has(y * WIDTH + x)) {
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(
-          x * CELL_SIZE + CELL_BORDER,
-          y * CELL_SIZE + CELL_BORDER,
-          CELL_SIZE - CELL_BORDER * 2,
-          CELL_SIZE - CELL_BORDER * 2
-        );
-      }
-      if (flags.has(y * WIDTH + x)) {
-        ctx.fillText(
-          EMOJI_FLAG,
-          x * CELL_SIZE + CELL_SIZE / 2,
-          y * CELL_SIZE + CELL_SIZE / 2
-        );
+  for (let cell = 0; cell < WIDTH * HEIGHT; cell++) {
+    const { x, y } = { x: cell % WIDTH, y: Math.floor(cell / WIDTH) };
+    ctx.save();
+    ctx.translate(x * CELL_SIZE, y * CELL_SIZE);
+    ctx.fillStyle = "#ddd";
+    ctx.fillRect(cb, cb, cs - cb * 2, cs - cb * 2);
+    if (bombs.has(cell)) ctx.fillText(`💣`, cs / 2, cs / 2);
+    else {
+      const bombs = bombCount(cell);
+      if (bombs > 0) {
+        ctx.fillStyle = "black";
+        ctx.fillText(bombs.toString(), cs / 2, cs / 2);
       }
     }
+    if (!revealed.has(cell)) {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(cb, cb, cs - cb * 2, cs - cb * 2);
+      if (flags.has(cell)) ctx.fillText(`🚩`, cs / 2, cs / 2);
+    }
+    ctx.restore();
   }
   ctx.restore();
 
-  // top center draw state
   const emoji = {
-    alive: "😀",
+    playing: "😀",
     dead: "💀",
     won: "🎉",
-  }[gameState];
+  }[determineGameState()];
   ctx.fillText(emoji, canvasRect.width / 2, 20);
 
   requestAnimationFrame(tick);
 });
 
-function bombCount(x: number, y: number) {
+/* INPUT HANDLING */
+
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  if (determineGameState() !== "playing") return;
+  const cell = screenPosToCell(event.clientX, event.clientY);
+  if (cell === null) return;
+  if (flags.has(cell)) flags.delete(cell);
+  else flags.add(cell);
+});
+
+document.onclick = (e) => {
+  if (determineGameState() !== "playing") window.location.reload();
+  const cell = screenPosToCell(e.clientX, e.clientY);
+  if (cell === null) return;
+  revealed.add(cell);
+  if (bombs.has(cell)) bombs.forEach((bomb) => revealed.add(bomb));
+  const bombsOnPos = bombCount(cell);
+  if (bombsOnPos === 0) floodFill(cell);
+};
+
+/* HELPER FUNCTIONS */
+
+function bombCount(cell: number) {
+  const { x, y } = { x: cell % WIDTH, y: Math.floor(cell / WIDTH) };
   let count = 0;
   for (let y2 = y - 1; y2 <= y + 1; y2++)
     for (let x2 = x - 1; x2 <= x + 1; x2++) {
@@ -133,96 +101,39 @@ function bombCount(x: number, y: number) {
 
 function centeredGrid() {
   const canvasRect = canvas.getBoundingClientRect();
-  const gridSize = {
-    width: WIDTH * CELL_SIZE,
-    height: HEIGHT * CELL_SIZE,
-  };
-  const gridLeft = (canvasRect.width - gridSize.width) / 2;
-  const gridTop = (canvasRect.height - gridSize.height) / 2;
+  const width = WIDTH * CELL_SIZE;
+  const height = HEIGHT * CELL_SIZE;
   return {
-    width: WIDTH * CELL_SIZE,
-    height: HEIGHT * CELL_SIZE,
-    left: gridLeft,
-    top: gridTop,
+    left: (canvasRect.width - width) / 2,
+    top: (canvasRect.height - height) / 2,
   };
 }
 
-function floodFill(x: number, y: number) {
+function floodFill(cell: number) {
+  const { x, y } = { x: cell % WIDTH, y: Math.floor(cell / WIDTH) };
   for (let y2 = y - 1; y2 <= y + 1; y2++)
     for (let x2 = x - 1; x2 <= x + 1; x2++) {
       const inBounds = x2 >= 0 && x2 < WIDTH && y2 >= 0 && y2 < HEIGHT;
       if (!inBounds) continue;
-      const cell = y2 * WIDTH + x2;
-      const bombsOnPos = bombCount(x2, y2);
-      if (bombsOnPos === 0 && !revealed.has(cell)) {
-        revealed.add(cell);
-        floodFill(x2, y2);
-      } else if (bombsOnPos > 0) revealed.add(cell);
+      const newCell = y2 * WIDTH + x2;
+      const bombsOnPos = bombCount(newCell);
+      if (bombsOnPos === 0 && !revealed.has(newCell)) {
+        revealed.add(newCell);
+        floodFill(newCell);
+      } else if (bombsOnPos > 0) revealed.add(newCell);
     }
 }
 
-/* HANDLE INPUT EVENTS */
-
-function screenPosToGridPos(x: number, y: number) {
-  const grid = centeredGrid();
-  const pos = {
-    x: Math.floor((x - grid.left) / CELL_SIZE),
-    y: Math.floor((y - grid.top) / CELL_SIZE),
-  };
-  if (pos.x < 0 || pos.x >= WIDTH || pos.y < 0 || pos.y >= HEIGHT)
-    return undefined;
-  return pos;
+function determineGameState() {
+  for (let bomb of bombs) if (revealed.has(bomb)) return "dead";
+  if (revealed.size === WIDTH * HEIGHT - MINES) return "won";
+  return "playing";
 }
 
-document.addEventListener("contextmenu", (event) => {
-  if (gameState !== "alive") {
-    event.preventDefault();
-    return;
-  }
-  event.preventDefault();
-  const gridPos = screenPosToGridPos(event.clientX, event.clientY);
-  if (!gridPos) return;
-  const { x, y } = gridPos;
-  const cell = y * WIDTH + x;
-  if (!revealed.has(cell)) {
-    if (flags.has(cell)) flags.delete(cell);
-    else flags.add(cell);
-  }
-});
-
-document.body.onclick = (e) => {
-  if (gameState !== "alive") {
-    // reset game!
-    return;
-  }
-  const gridPos = screenPosToGridPos(e.clientX, e.clientY);
-  if (!gridPos) return;
-  const { x, y } = gridPos;
-  const cell = y * WIDTH + x;
-  revealed.add(cell);
-  if (bombs.has(cell)) {
-    gameState = "dead";
-    bombs.forEach((bomb) => revealed.add(bomb));
-    return;
-  }
-  const bombsOnPos = bombCount(x, y);
-  if (bombsOnPos === 0) floodFill(x, y);
-  const won = revealed.size === WIDTH * HEIGHT - MINES;
-  if (won) gameState = "won";
-  canvas.style.cursor = "default";
-};
-
-document.body.onpointermove = (e) => {
-  if (gameState !== "alive") {
-    canvas.style.cursor = "default";
-    return;
-  }
-  const gridPos = screenPosToGridPos(e.clientX, e.clientY);
-  if (!gridPos) {
-    canvas.style.cursor = "default";
-    return;
-  }
-  const { x, y } = gridPos;
-  if (!revealed.has(y * WIDTH + x)) canvas.style.cursor = "pointer";
-  else canvas.style.cursor = "default";
-};
+function screenPosToCell(x: number, y: number) {
+  const grid = centeredGrid();
+  const gridX = Math.floor((x - grid.left) / CELL_SIZE);
+  const gridY = Math.floor((y - grid.top) / CELL_SIZE);
+  if (gridX < 0 || gridX >= WIDTH || gridY < 0 || gridY >= HEIGHT) return null;
+  return gridY * WIDTH + gridX;
+}

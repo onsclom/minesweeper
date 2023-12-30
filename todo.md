@@ -1,0 +1,5 @@
+- add way to reset game
+- add difficulty levels (maybe with url params?)
+- add sounds
+- add colors for numbers
+- allow zooming and scrolling for big boards on mobile? \*/
