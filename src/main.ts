@@ -32,6 +32,7 @@ const CELL_SIZE = 32;
 // generate bombs
 const bombs = new Set<number>();
 const revealed = new Set<number>();
+let a = 4;
 while (bombs.size < MINES)
   bombs.add(Math.floor(Math.random() * WIDTH * HEIGHT));
 
@@ -41,15 +42,21 @@ const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("Canvas context not found");
 
 requestAnimationFrame(function tick() {
-  /* SETUP */
-  // setup canvas
   const canvasRect = canvas.getBoundingClientRect();
+
+  /* SETUP */
+
+  // handle high dpi
+  // const newWidth = canvasRect.width * devicePixelRatio;
+  // const newHeight = canvasRect.height * devicePixelRatio;
+  // if (canvas.width !== newWidth || canvas.height !== newHeight) {
   canvas.width = canvasRect.width * devicePixelRatio;
   canvas.height = canvasRect.height * devicePixelRatio;
   ctx.scale(devicePixelRatio, devicePixelRatio);
+  // }
 
   // computed state
-  const won = revealed.size === WIDTH * HEIGHT - MINES;
+  // const won = revealed.size === WIDTH * HEIGHT - MINES;
 
   /* DRAW */
   ctx.fillStyle = "black";
@@ -75,20 +82,15 @@ requestAnimationFrame(function tick() {
           y * CELL_SIZE + CELL_SIZE / 2
         );
       else {
-        const neighborCount = (() => {
-          let count = 0;
-          for (let y2 = y - 1; y2 <= y + 1; y2++)
-            for (let x2 = x - 1; x2 <= x + 1; x2++)
-              if (bombs.has(y2 * WIDTH + x2)) count++;
-          return count;
-        })();
-        ctx.fillStyle = "black";
-        if (neighborCount > 0)
+        const neighborCount = bombCount(x, y);
+        if (neighborCount > 0) {
+          ctx.fillStyle = "black";
           ctx.fillText(
             neighborCount.toString(),
             x * CELL_SIZE + CELL_SIZE / 2,
             y * CELL_SIZE + CELL_SIZE / 2
           );
+        }
       }
       if (!revealed.has(y * WIDTH + x)) {
         ctx.fillStyle = "#fff";
@@ -104,6 +106,16 @@ requestAnimationFrame(function tick() {
   requestAnimationFrame(tick);
 });
 
+function bombCount(x: number, y: number) {
+  let count = 0;
+  for (let y2 = y - 1; y2 <= y + 1; y2++)
+    for (let x2 = x - 1; x2 <= x + 1; x2++)
+      if (bombs.has(y2 * WIDTH + x2)) count++;
+  return count;
+}
+
+/* HANDLE INPUT EVENTS */
+
 document.body.onclick = (e) => {
   const x = Math.floor(e.clientX / CELL_SIZE);
   const y = Math.floor(e.clientY / CELL_SIZE);
@@ -113,5 +125,31 @@ document.body.onclick = (e) => {
   //   location.reload();
   // } else {
   revealed.add(cell);
-  // }
+  const bombsOnPos = bombCount(x, y);
+  if (bombsOnPos === 0) floodFill(x, y);
+
+  canvas.style.cursor = "default";
+};
+
+function floodFill(x: number, y: number) {
+  for (let y2 = y - 1; y2 <= y + 1; y2++)
+    for (let x2 = x - 1; x2 <= x + 1; x2++) {
+      const inBounds = x2 >= 0 && x2 < WIDTH && y2 >= 0 && y2 < HEIGHT;
+      if (!inBounds) continue;
+      const cell = y2 * WIDTH + x2;
+      const bombsOnPos = bombCount(x2, y2);
+      if (bombsOnPos === 0 && !revealed.has(cell)) {
+        revealed.add(cell);
+        floodFill(x2, y2);
+      } else if (bombsOnPos > 0) revealed.add(cell);
+    }
+}
+
+document.body.onpointermove = (e) => {
+  const x = Math.floor(e.clientX / CELL_SIZE);
+  const y = Math.floor(e.clientY / CELL_SIZE);
+
+  // change to pointer if on unopened
+  if (!revealed.has(y * WIDTH + x)) canvas.style.cursor = "pointer";
+  else canvas.style.cursor = "default";
 };
