@@ -21,6 +21,7 @@ requestAnimationFrame(function tick() {
   ctx.scale(devicePixelRatio, devicePixelRatio);
 
   /* RENDER */
+
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, canvasRect.width, canvasRect.height);
 
