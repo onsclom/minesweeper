@@ -36,8 +36,7 @@ let a = 4;
 while (bombs.size < MINES)
   bombs.add(Math.floor(Math.random() * WIDTH * HEIGHT));
 
-const canvas = document.getElementById("canvas");
-if (!(canvas instanceof HTMLCanvasElement)) throw new Error("Canvas not found");
+const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("Canvas context not found");
 
@@ -65,6 +64,9 @@ requestAnimationFrame(function tick() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
+  const grid = centeredGrid();
+  ctx.save();
+  ctx.translate(grid.left, grid.top);
   // draw grid
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
@@ -103,6 +105,8 @@ requestAnimationFrame(function tick() {
       }
     }
   }
+  ctx.restore();
+
   requestAnimationFrame(tick);
 });
 
@@ -114,22 +118,21 @@ function bombCount(x: number, y: number) {
   return count;
 }
 
-/* HANDLE INPUT EVENTS */
-
-document.body.onclick = (e) => {
-  const x = Math.floor(e.clientX / CELL_SIZE);
-  const y = Math.floor(e.clientY / CELL_SIZE);
-  const cell = y * WIDTH + x;
-  // if (bombs.has(cell)) {
-  //   alert("Game over!");
-  //   location.reload();
-  // } else {
-  revealed.add(cell);
-  const bombsOnPos = bombCount(x, y);
-  if (bombsOnPos === 0) floodFill(x, y);
-
-  canvas.style.cursor = "default";
-};
+function centeredGrid() {
+  const canvasRect = canvas.getBoundingClientRect();
+  const gridSize = {
+    width: WIDTH * CELL_SIZE,
+    height: HEIGHT * CELL_SIZE,
+  };
+  const gridLeft = (canvasRect.width - gridSize.width) / 2;
+  const gridTop = (canvasRect.height - gridSize.height) / 2;
+  return {
+    width: WIDTH * CELL_SIZE,
+    height: HEIGHT * CELL_SIZE,
+    left: gridLeft,
+    top: gridTop,
+  };
+}
 
 function floodFill(x: number, y: number) {
   for (let y2 = y - 1; y2 <= y + 1; y2++)
@@ -145,11 +148,37 @@ function floodFill(x: number, y: number) {
     }
 }
 
-document.body.onpointermove = (e) => {
-  const x = Math.floor(e.clientX / CELL_SIZE);
-  const y = Math.floor(e.clientY / CELL_SIZE);
+/* HANDLE INPUT EVENTS */
 
-  // change to pointer if on unopened
+function screenPosToGridPos(x: number, y: number) {
+  const grid = centeredGrid();
+  const pos = {
+    x: Math.floor((x - grid.left) / CELL_SIZE),
+    y: Math.floor((y - grid.top) / CELL_SIZE),
+  };
+  if (pos.x < 0 || pos.x >= WIDTH || pos.y < 0 || pos.y >= HEIGHT)
+    return undefined;
+  return pos;
+}
+
+document.body.onclick = (e) => {
+  const gridPos = screenPosToGridPos(e.clientX, e.clientY);
+  if (!gridPos) return;
+  const { x, y } = gridPos;
+  const cell = y * WIDTH + x;
+  revealed.add(cell);
+  const bombsOnPos = bombCount(x, y);
+  if (bombsOnPos === 0) floodFill(x, y);
+  canvas.style.cursor = "default";
+};
+
+document.body.onpointermove = (e) => {
+  const gridPos = screenPosToGridPos(e.clientX, e.clientY);
+  if (!gridPos) {
+    canvas.style.cursor = "default";
+    return;
+  }
+  const { x, y } = gridPos;
   if (!revealed.has(y * WIDTH + x)) canvas.style.cursor = "pointer";
   else canvas.style.cursor = "default";
 };
